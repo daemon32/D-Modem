@@ -87,7 +87,7 @@
 #define DBG(fmt,args...) dprintf("main: " fmt, ##args)
 
 
-#define SLMODEMD_USER "nobody"
+//#define SLMODEMD_USER "nobody"
 #define LOCKED_MEM_MIN_KB (8UL * 1024)
 #define LOCKED_MEM_MIN    (LOCKED_MEM_MIN_KB * 1024)
 
@@ -779,7 +779,7 @@ static int socket_device_setup(struct device_struct *dev, const char *dev_name)
  *
  */
 
-static char link_name[PATH_MAX];
+//static char link_name[PATH_MAX];
 
 int create_pty(struct modem *m)
 {
@@ -821,7 +821,7 @@ int create_pty(struct modem *m)
 	m->pty_name = pty_name;
 
 	modem_update_termios(m,&termios);
-
+/*
 	if(modem_group && *modem_group) {
 		struct group *grp = getgrnam(modem_group);
 		if(!grp) {
@@ -855,7 +855,7 @@ int create_pty(struct modem *m)
 			     link_name, pty_name);
 		}
 	}
-
+*/
 	return 0;
 }
 
@@ -1087,7 +1087,7 @@ int modem_main(const char *dev_name)
 	prop_dp_init();
 	modem_timer_init();
 
-	sprintf(link_name,"/dev/ttySL%d", device.num);
+//	sprintf(link_name,"/dev/ttySL%d", device.num);
 
 	m = modem_create(modem_driver,basename(dev_name));
 	m->name = basename(dev_name);
@@ -1103,7 +1103,7 @@ int modem_main(const char *dev_name)
 	INFO("modem `%s' created. TTY is `%s'\n",
 	     m->name, m->pty_name);
 
-	sprintf(path_name,"/var/lib/slmodem/data.%s",basename(dev_name));
+	sprintf(path_name,"/tmp/slmodem/data.%s",basename(dev_name));
 	datafile_load_info(path_name,&m->dsp_info);
 
 	if (need_realtime) {
@@ -1161,9 +1161,11 @@ int modem_main(const char *dev_name)
 	DBG("dropped privileges to %ld.%ld\n",
 	    (long)pwd->pw_gid,(long)pwd->pw_uid);
 #endif
-
+/*
 	INFO("Use `%s' as modem device, Ctrl+C for termination.\n",
 	     *link_name ? link_name : m->pty_name);
+*/
+	INFO("Use `%s' as modem device, Ctrl+C for termination.\n", m->pty_name);
 
 	/* main loop here */
 	ret = modem_run(m,&device);
@@ -1175,8 +1177,8 @@ int modem_main(const char *dev_name)
 
 	usleep(100000);
 	close(pty);
-	if(*link_name)
-		unlink(link_name);
+//	if(*link_name)
+//		unlink(link_name);
 	
 	dp_dummy_exit();
 	dp_sinus_exit();
