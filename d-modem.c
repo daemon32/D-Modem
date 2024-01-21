@@ -22,10 +22,17 @@
 #include <stdio.h>
 #include <signal.h>
 #include <errno.h>
-
+// test
 #include <pjsua-lib/pjsua.h>
 
 #define SIGNATURE PJMEDIA_SIG_CLASS_PORT_AUD('D','M')
+#define DMODEM_DIAL_MODE 0
+#define DMODEM_ANSWER_MODE 2
+#define DMODEM_RING_DETECT_MODE 3
+
+uint8_t mode = DMODEM_DIAL_MODE;
+uint8_t ringing = 0;
+pjsua_call_id incoming;
 
 struct dmodem {
 	pjmedia_port base;
@@ -92,13 +99,28 @@ static void on_call_state(pjsua_call_id call_id, pjsip_event *e) {
 				ci.state_text.ptr));
 
 	if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
-		close(port.sock);
-		if (!destroying) {
-			destroying = true;
-			pjsua_destroy();
-			exit(0);
+		if(mode != DMODEM_RING_DETECT_MODE) {
+			close(port.sock);
+			if (!destroying) {
+				destroying = true;
+				pjsua_destroy();
+				exit(0);
+			}
 		}
+		ringing = 0;
 	}
+}
+
+static void on_incoming_call(pjsua_acc_id acc_id, pjsua_call_id call_id, pjsip_rx_data *rdata) {
+	pjsua_call_info ci;
+	pjsua_call_get_info(call_id, &ci);
+	char* tmp = malloc(pj_strlen(&ci.remote_contact)+1);
+	strcpy(tmp, ci.remote_contact.ptr);
+	tmp[pj_strlen(&ci.remote_contact)] = '\0';
+	printf("Incoming call from: %s\n", tmp);
+	free(tmp);
+	incoming = call_id;
+	ringing = 1;
 }
 
 /* Callback called by the library when call's media state has changed */
@@ -126,30 +148,22 @@ static void on_call_media_state(pjsua_call_id call_id) {
 int main(int argc, char *argv[]) {
 	pjsua_acc_id acc_id;
 	pj_status_t status;
-
 	if (argc != 3) {
 		return -1;
 	}
-
+	ringing = 0;
+	if(!strncmp(argv[1], "++", 2)) {
+		mode = DMODEM_ANSWER_MODE;
+	} else if(!strncmp(argv[1], "rr", 2)) {
+		mode = DMODEM_RING_DETECT_MODE;
+	}
 	signal(SIGPIPE,SIG_IGN);
-
 	char *dialstr = argv[1];
 
-	char *sip_user = getenv("SIP_LOGIN");
-	if (!sip_user) {
-		return -1;
-	}
-	char *sip_domain = strchr(sip_user,'@');
-	if (!sip_domain) {
-		return -1;
-	}
-	*sip_domain++ = '\0';
-	char *sip_pass = strchr(sip_user,':');
-	if (!sip_pass) {
-		return -1;
-	}
-	*sip_pass++ = '\0';
-
+	char *sip_user = "dialupuser";
+	char *sip_domain = "192.168.1.2";
+	char *sip_pass = "pppasswdModem1";
+	printf("sip data: user: %s, passwd: %s, server: %s\nMODE: %d\n", sip_user, sip_pass, sip_domain, mode);
 	status = pjsua_create();
 	if (status != PJ_SUCCESS) error_exit("Error in pjsua_create()", status);
 
@@ -162,6 +176,10 @@ int main(int argc, char *argv[]) {
 		pjsua_config_default(&cfg);
 		cfg.cb.on_call_media_state = &on_call_media_state;
 		cfg.cb.on_call_state = &on_call_state;
+
+		if(mode == DMODEM_RING_DETECT_MODE) {
+			cfg.cb.on_incoming_call = &on_incoming_call;
+		}
 
 		pjsua_logging_config_default(&log_cfg);
 		log_cfg.console_level = 4;
@@ -204,24 +222,25 @@ int main(int argc, char *argv[]) {
 		status = pjsua_transport_create(PJSIP_TRANSPORT_UDP, &cfg, NULL);
 		if (status != PJ_SUCCESS) error_exit("Error creating transport", status);
 	}
-
+	char buf[384];
+	printf("Initializing pool\n");
 	pj_caching_pool cp;
 	pj_caching_pool_init(&cp, NULL, 1024*1024);
 	pool = pj_pool_create(&cp.factory, "pool1", 4000, 4000, NULL);
 
 	pj_str_t name = pj_str("dmodem");
-	
+
 	memset(&port,0,sizeof(port));
 	port.sock = atoi(argv[2]); // inherited from parent
+	if(mode == DMODEM_RING_DETECT_MODE)
+		port.sock = NULL;
 	pjmedia_port_info_init(&port.base.info, &name, SIGNATURE, 9600, 1, 16, 192);
 	port.base.put_frame = dmodem_put_frame;
 	port.base.get_frame = dmodem_get_frame;
 	port.base.on_destroy = dmodem_on_destroy;
 
-	char buf[384];
 	memset(buf,0,sizeof(buf));
 	write(port.sock, buf, sizeof(buf));
-
 	/* Initialization is done, now start pjsua */
 	status = pjsua_start();
 	if (status != PJ_SUCCESS) error_exit("Error starting pjsua", status);
@@ -233,7 +252,7 @@ int main(int argc, char *argv[]) {
 		pj_strdup2(pool,&cfg.id,buf);
 		snprintf(buf,sizeof(buf),"sip:%s",sip_domain);
 		pj_strdup2(pool,&cfg.reg_uri,buf);
-		cfg.register_on_acc_add = false;
+		cfg.register_on_acc_add = mode ? true : false;
 		cfg.cred_count = 1;
 		cfg.cred_info[0].realm = pj_str("*");
 		cfg.cred_info[0].scheme = pj_str("digest");
@@ -245,16 +264,33 @@ int main(int argc, char *argv[]) {
 		if (status != PJ_SUCCESS) error_exit("Error adding account", status);
 	}
 
-	snprintf(buf,sizeof(buf),"sip:%s@%s",dialstr,sip_domain);
-	printf("calling %s\n",buf);
-	pj_str_t uri = pj_str(buf);
-	
-	pjsua_call_id callid;
-	status = pjsua_call_make_call(acc_id, &uri, 0, NULL, NULL, &callid);
-	if (status != PJ_SUCCESS) error_exit("Error making call", status);
-
+	if(mode == DMODEM_DIAL_MODE) {
+		snprintf(buf,sizeof(buf),"sip:%s@%s",dialstr,sip_domain);
+		printf("calling %s\n",buf);
+		pj_str_t uri = pj_str(buf);
+		pjsua_call_id callid;
+		status = pjsua_call_make_call(acc_id, &uri, 0, NULL, NULL, &callid);
+		if (status != PJ_SUCCESS) error_exit("Error making call", status);
+	}
+	if(mode == DMODEM_ANSWER_MODE) {
+		pjsua_call_id id;
+		char* cid = strrchr(argv[1], '+');
+		id = atoi(cid);
+		status = pjsua_call_answer(id, 200, NULL, NULL);
+		if (status != PJ_SUCCESS) error_exit("Error answering call", status);
+	}
 	struct timespec ts = {100, 0};
+	if(mode == DMODEM_RING_DETECT_MODE)
+		ts.tv_sec = 1;
+	time_t now = time(NULL);
 	while(1) {
+		if(mode == DMODEM_RING_DETECT_MODE) {
+			if(ringing) {
+				char cid[11];
+				snprintf(cid, 10, "%d", incoming);
+				write(atoi(argv[2]), cid, strlen(cid));
+			}
+		}
 		nanosleep(&ts,NULL);
 	}
 

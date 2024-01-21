@@ -1203,7 +1203,7 @@ static int modem_stop (struct modem *m)
 	}
 #ifdef MODEM_CONFIG_RING_DETECTOR
 	if(m->rd_obj) {
-		RD_delete(m->rd_obj);
+		free(m->rd_obj);
 		m->rd_obj = NULL;
 	}
 #endif
@@ -1316,6 +1316,11 @@ static int modem_cid_start(struct modem *m, unsigned timeout)
 #ifdef MODEM_CONFIG_RING_DETECTOR
 static void modem_ring_detector_process(struct modem *m, void *in, void *out, int count)
 {
+	if(count != 0) {
+		char callid[10];
+		strncpy(callid, in, 10);
+		printf("Ringing! callid:%s\n", callid);
+	}/*
 	int ret;
 	memset(out, 0, count*2);
 	ret = RD_process(m->rd_obj, in, count);
@@ -1330,7 +1335,7 @@ static void modem_ring_detector_process(struct modem *m, void *in, void *out, in
 		}
 		else if (freq > 0) {
 			MODEM_DBG("report ring end...\n");
-			/* ring finishing */
+			/* ring finishing *//*
 			m->event |= MDMEVENT_RING_CHECK;
 			if (m->ring_count <= 1)
 				m->ring_count = duration * freq / 1000 ;
@@ -1339,7 +1344,7 @@ static void modem_ring_detector_process(struct modem *m, void *in, void *out, in
 		else
 			MODEM_ERR("RD returns %ld freq. (duration %ld)\n",
 				  freq, duration);
-	}
+	}*/
 #ifdef MODEM_CONFIG_CID
 	if(m->cid)
 		modem_cid_process(m, in, out, count);
@@ -1353,10 +1358,11 @@ int modem_ring_detector_start(struct modem *m)
 		MODEM_ERR("modem_ring_detector_start: rd_obj already exists!\n");
 		return -1;
 	}
-	m->rd_obj = RD_create(m, m->srate);
+	m->rd_obj = malloc(sizeof(char));
 	m->process = modem_ring_detector_process;
 	modem_set_hook(m, MODEM_HOOK_SNOOPING);
 	return do_modem_start(m);
+
 }
 #endif /* MODEM_CONFIG_RING_DETECTOR */
 

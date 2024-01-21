@@ -8,9 +8,9 @@ $(PKG_CONFIG_PATH)/libpjproject.pc:
 	$(MAKE) -C $(PJSIP_DIR) && \
 	$(MAKE) -C $(PJSIP_DIR) install
 
-d-modem: d-modem.c $(PKG_CONFIG_PATH)/libpjproject.pc
-	$(CC) -o $@ $< `PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --static --cflags --libs libpjproject`
-
+d-modem: d-modem.c dmodem2.c $(PKG_CONFIG_PATH)/libpjproject.pc
+	$(CC) -g -o $@ $< `PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --static --cflags --libs libpjproject`
+	$(CC) -g -o dmodem2 dmodem2.c `PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --static --cflags --libs libpjproject`
 slmodemd:
 	$(MAKE) -C slmodemd
 

@@ -601,6 +601,8 @@ static int modemap_ioctl(struct modem *m, unsigned int cmd, unsigned long arg)
 	if (cmd == MDMCTL_IODELAY && ret > 0) {
 		ret >>= MFMT_SHIFT(m->format);
 		ret += dev->delay;
+
+		
 	}
 	return ret;
 }
@@ -637,7 +639,11 @@ static int socket_start (struct modem *m)
 		snprintf(str,sizeof(str),"%d",sockets[0]);
 		close(sockets[1]);
 
-		ret = execl(modem_exec,modem_exec,m->dial_string,str,NULL);
+		if(m->hook == MODEM_HOOK_SNOOPING)
+			ret = execl(modem_exec,modem_exec,"rr",str,NULL);
+		else
+			ret = execl(modem_exec,modem_exec,m->dial_string,str,NULL);
+
 		if (ret == -1) {
 			ERR("prog: %s\n", modem_exec);
 			perror("execl");
@@ -946,7 +952,7 @@ static int modem_run(struct modem *m, struct device_struct *dev)
 		}
 		if(FD_ISSET(dev->fd, &rset)) {
 			count = device_read(dev,inbuf,sizeof(inbuf)/2);
-			if(count <= 0) {
+			if((count <= 0) && (m->hook != MODEM_HOOK_SNOOPING)) {
 				if (errno == ECONNRESET) {
 					DBG("lost connection to child socket process\n");
 				} else {
