@@ -158,12 +158,27 @@ int main(int argc, char *argv[]) {
 		mode = DMODEM_RING_DETECT_MODE;
 	}
 	signal(SIGPIPE,SIG_IGN);
+
 	char *dialstr = argv[1];
 
-	char *sip_user = "dialupuser";
-	char *sip_domain = "192.168.1.2";
-	char *sip_pass = "pppasswdModem1";
-	printf("sip data: user: %s, passwd: %s, server: %s\nMODE: %d\n", sip_user, sip_pass, sip_domain, mode);
+    char *sip_user = getenv("SIP_LOGIN");
+    if (!sip_user) {
+        printf("SIP_LOGIN undefined!\n");
+        return -1;
+    }
+    char *sip_domain = strchr(sip_user,'@');
+    if (!sip_domain) {
+        printf("Malformed SIP_LOGIN string! (no domain name)\n");
+        return -1;
+    }
+    *sip_domain++ = '\0';
+    char *sip_pass = strchr(sip_user,':');
+    if (!sip_pass) {
+        printf("Malformed SIP_LOGIN string! (no password)\n");
+        return -1;
+    }
+    *sip_pass++ = '\0';
+
 	status = pjsua_create();
 	if (status != PJ_SUCCESS) error_exit("Error in pjsua_create()", status);
 
